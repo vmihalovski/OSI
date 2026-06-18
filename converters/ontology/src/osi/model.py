@@ -80,6 +80,7 @@ class Concept:
     _identify_by: dict[str, Relationship]
     _derived_by: list[Formula]
     _requires: list[Formula]
+    _is_component: bool
 
     def __init__(
         self,
@@ -91,6 +92,7 @@ class Concept:
         identify_by: dict[str, Relationship] | None = None,
         derived_by: list[Formula] | None = None,
         requires: list[Formula] | None = None,
+        is_component: bool = True
     ):
         self._name = name
         self._type = type
@@ -100,6 +102,7 @@ class Concept:
         self._identify_by = identify_by if identify_by else {}
         self._derived_by = derived_by if derived_by else []
         self._requires = requires if requires else []
+        self._is_component = is_component
 
     def add_require(self, require: Formula) -> None:
         self._requires.append(require)
@@ -128,6 +131,11 @@ class Concept:
     @property
     def is_builtin(self) -> bool:
         return self._builtin
+
+    # True if this concept identifies a concept component in an OSI ontology
+    @property
+    def is_component(self) -> bool:
+        return self._is_component
 
     @property
     def is_value_type(self) -> bool:
@@ -916,7 +924,7 @@ class OntologyComponent:
         if name in self._concept_name_map:
             return self._concept_name_map[name]
         if name in BUILTIN_CONCEPTS:
-            concept = Concept(name=name, builtin=True)
+            concept = Concept(name=name, builtin=True, is_component=False)
             self.add_concept(concept)
             return concept
         return None
