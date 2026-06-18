@@ -223,6 +223,7 @@ class OsiSpec(OsiObject):
     version: str | None = None
     name: str
     description: str | None = None
+    requires: list[str] = Field(default_factory=list)
     ai_context: AiContext | None = None
     ontology: list[ConceptComponent] = Field(default_factory=list)
     ontology_mappings: list[OntologyMapping] = Field(default_factory=list)
