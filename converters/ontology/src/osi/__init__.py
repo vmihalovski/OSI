@@ -14,6 +14,7 @@ from osi.model import (
     DialectExpression,
     DialectExpressionSet,
     Formula,
+    FormulaFactory,
     JoinPath,
     LinkMapping,
     Metric,
@@ -60,6 +61,7 @@ __all__ = [
     "OsiOntology",
     # Supporting types
     "CustomExtension",
+    "FormulaFactory",
     # Spec DTO
     "OsiSpec",
     # Parsers

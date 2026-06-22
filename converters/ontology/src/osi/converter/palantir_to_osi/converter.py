@@ -28,6 +28,7 @@ from osi.model import (
     DialectExpression,
     DialectExpressionSet,
     Formula,
+    FormulaFactory,
     LinkMapping,
     SemanticModel,
     ObjectMapping,
@@ -44,16 +45,27 @@ _DEFAULT_DIALECT = "ANSI_SQL"
 
 
 class PalantirToOsiConverter:
-    """Top-level converter. Use `convert(ontology_model)` to obtain an `OsiOntology`."""
+    """Converts a Palantir Ontology to OsiOntology.
+
+    Pass a *formula_factory* to control how Formula objects are created.
+    The default produces plain ``Formula`` instances; downstream packages can
+    inject a factory that returns enriched subclasses (e.g. with an AST).
+
+        model = PalantirToOsiConverter().convert(palantir_ontology)
+        model = PalantirToOsiConverter(formula_factory=my_parser).convert(palantir_ontology)
+    """
 
     depths_role_names = {1: "fst", 2: "snd", 3: "thd", 4: "frt"}
+
+    def __init__(self, formula_factory: FormulaFactory = Formula):
+        self._formula_factory = formula_factory
 
     # ------------------------------------------------------------------
     # Entry point
     # ------------------------------------------------------------------
 
-    @staticmethod
     def convert(
+        self,
         palantir_ontology: PalantirOntology,
         db_name: str = "palantir",
         schema_name: str = "palantir",
@@ -70,12 +82,8 @@ class PalantirToOsiConverter:
         # get created; emitted into the OntologyMapping at the end so they appear in a stable order.
         concept_mappings: list[ConceptMapping] = []
 
-        PalantirToOsiConverter._convert_concepts(
-            ontology, semantic_model, palantir_ontology, concept_mappings, db_name, schema_name
-        )
-        PalantirToOsiConverter._convert_relationships(
-            ontology, palantir_ontology, concept_mappings, semantic_model
-        )
+        self._convert_concepts(ontology, semantic_model, palantir_ontology, concept_mappings, db_name, schema_name)
+        self._convert_relationships(ontology, palantir_ontology, concept_mappings, semantic_model)
 
         for cm in concept_mappings:
             ontology_mapping.add_concept_mapping(cm)
@@ -86,8 +94,8 @@ class PalantirToOsiConverter:
     # Concepts
     # ------------------------------------------------------------------
 
-    @staticmethod
     def _convert_concepts(
+        self,
         ontology: OntologyComponent,
         semantic_model: SemanticModel,
         palantir_ontology: PalantirOntology,
@@ -116,7 +124,7 @@ class PalantirToOsiConverter:
         for ot_guid in order:
             ot = palantir_ontology.object_types()[ot_guid]
             if ot.active() or ot.endorsed() or ot.intermediary():
-                PalantirToOsiConverter._convert_object_type(
+                self._convert_object_type(
                     ontology,
                     semantic_model,
                     ot,
@@ -127,8 +135,8 @@ class PalantirToOsiConverter:
                     schema_name,
                 )
 
-    @staticmethod
     def _convert_object_type(
+        self,
         ontology: OntologyComponent,
         semantic_model: SemanticModel,
         ot: ObjectType,
@@ -162,7 +170,7 @@ class PalantirToOsiConverter:
             ontology.add_concept(concept)
 
             for prop in relevant_props:
-                PalantirToOsiConverter._convert_property(ontology, concept, prop)
+                self._convert_property(ontology, concept, prop)
 
             if not is_subtype or ignore_subtype:
                 identifiers: dict[str, Relationship] = {}
@@ -200,12 +208,11 @@ class PalantirToOsiConverter:
                         f"contain the '{prop_name}' property."
                     )
 
-        PalantirToOsiConverter._convert_mappings(
+        self._convert_mappings(
             ontology, semantic_model, ot, subtype_relations, concept, concept_mappings, db_name, schema_name
         )
 
-    @staticmethod
-    def _convert_property(ontology: OntologyComponent, concept: Concept, prop: PalantirProperty) -> None:
+    def _convert_property(self, ontology: OntologyComponent, concept: Concept, prop: PalantirProperty) -> None:
         def madlib_decl(c: Concept, p: PalantirProperty) -> str:
             return (
                 f"{{{c}}} {p.readable_id()} "
@@ -217,7 +224,7 @@ class PalantirToOsiConverter:
             return
 
         relates: list[tuple[Concept, str | None]] = []
-        relates = PalantirToOsiConverter._convert_property_type_roles(ontology, relates, prop.type())
+        relates = self._convert_property_type_roles(ontology, relates, prop.type())
 
         ontology.add_relationship(Relationship(
             name=prop_name,
@@ -230,8 +237,8 @@ class PalantirToOsiConverter:
     # Mappings: ConceptMapping per (concept, dataset)
     # ------------------------------------------------------------------
 
-    @staticmethod
     def _convert_mappings(
+        self,
         ontology: OntologyComponent,
         semantic_model: SemanticModel,
         ot: ObjectType,
@@ -264,9 +271,7 @@ class PalantirToOsiConverter:
                 return p
 
         for palantir_ds in ot.syncs_from():
-            dataset = PalantirToOsiConverter._convert_dataset(
-                semantic_model, ontology, ot, palantir_ds, db_name, schema_name
-            )
+            dataset = self._convert_dataset(semantic_model, ontology, ot, palantir_ds, db_name, schema_name)
 
             # Build referent_mappings that locate `concept` instances by
             # walking the (effective) identifying relationships against this
@@ -349,8 +354,8 @@ class PalantirToOsiConverter:
     # Relations (M:1, M:M, intermediary)
     # ------------------------------------------------------------------
 
-    @staticmethod
     def _convert_relationships(
+        self,
         ontology: OntologyComponent,
         palantir_ontology: PalantirOntology,
         concept_mappings: list[ConceptMapping],
@@ -358,42 +363,40 @@ class PalantirToOsiConverter:
     ) -> None:
         for rel in palantir_ontology.relations().values():
             if rel.active() or rel.intermediary():
-                PalantirToOsiConverter._convert_relation(ontology, rel, concept_mappings, semantic_model)
+                self._convert_relation(ontology, rel, concept_mappings, semantic_model)
             elif (
                 isinstance(rel, ManyToOneRelation)
                 and rel.experimental()
                 and rel.one_object_type().active()
                 and rel.many_object_type().active()
             ):
-                PalantirToOsiConverter._convert_relation(ontology, rel, concept_mappings, semantic_model)
+                self._convert_relation(ontology, rel, concept_mappings, semantic_model)
 
         for ir in palantir_ontology.intermediary_relations().values():
             if ir.active() or ir.intermediary():
-                PalantirToOsiConverter._convert_intermediary_relation(ontology, palantir_ontology, ir)
+                self._convert_intermediary_relation(ontology, palantir_ontology, ir)
             elif (
                 ir.experimental()
                 and ir.role_a_player().active()
                 and ir.role_b_player().active()
                 and ir.intermediary_player().active()
             ):
-                PalantirToOsiConverter._convert_intermediary_relation(ontology, palantir_ontology, ir)
+                self._convert_intermediary_relation(ontology, palantir_ontology, ir)
 
-    @staticmethod
     def _convert_relation(
+        self,
         ontology: OntologyComponent,
         relation: Relation,
         concept_mappings: list[ConceptMapping],
         semantic_model: SemanticModel,
     ) -> None:
         if isinstance(relation, ManyToOneRelation):
-            PalantirToOsiConverter._convert_many_to_one(
-                ontology, relation, concept_mappings, semantic_model
-            )
+            self._convert_many_to_one(ontology, relation, concept_mappings, semantic_model)
         elif isinstance(relation, ManyToManyRelation):
-            PalantirToOsiConverter._convert_many_to_many(ontology, relation)
+            self._convert_many_to_many(ontology, relation)
 
-    @staticmethod
     def _convert_many_to_one(
+        self,
         ontology: OntologyComponent,
         rel: ManyToOneRelation,
         concept_mappings: list[ConceptMapping],
@@ -426,7 +429,7 @@ class PalantirToOsiConverter:
         ontology.add_relationship(relationship)
 
         if mot._syncs_from:
-            PalantirToOsiConverter._attach_link_to_concept_mappings(
+            self._attach_link_to_concept_mappings(
                 ontology, rel, relationship, mot, mot_concept, oot_concept, concept_mappings, semantic_model
             )
         else:
@@ -438,12 +441,12 @@ class PalantirToOsiConverter:
                 for mprop, oprop in rel.property_map().items()
             ]
             if frags:
-                formula = Formula(raw_expr=" AND ".join(frags), parent=relationship)
+                formula = self._formula_factory(raw_expr=" AND ".join(frags), parent=relationship)
                 relationship.add_derived_by(formula)
                 ontology.add_rule(formula)
 
-    @staticmethod
     def _attach_link_to_concept_mappings(
+        self,
         ontology: OntologyComponent,
         rel: ManyToOneRelation,
         relationship: Relationship,
@@ -553,8 +556,7 @@ class PalantirToOsiConverter:
             for rm in (om.referent_mappings or [])
         )
 
-    @staticmethod
-    def _convert_many_to_many(ontology: OntologyComponent, rel: ManyToManyRelation) -> None:
+    def _convert_many_to_many(self, ontology: OntologyComponent, rel: ManyToManyRelation) -> None:
         aot = rel.role_a_player()
         aot_concept = ontology.lookup_concept(PalantirToOsiConverter._concept_name(aot))
         bot = rel.role_b_player()
@@ -579,8 +581,8 @@ class PalantirToOsiConverter:
         )
         ontology.add_relationship(relationship)
 
-    @staticmethod
     def _convert_intermediary_relation(
+        self,
         ontology: OntologyComponent,
         palantir_ontology: PalantirOntology,
         rel: IntermediaryRelation,
@@ -636,7 +638,7 @@ class PalantirToOsiConverter:
             f"{fp_a}.{rel_a_name}({relationship.first_role.name}) AND "
             f"{fp_b}.{rel_b_name}({relationship.last_role.name})"
         )
-        formula = Formula(raw_expr=join_condition, parent=relationship)
+        formula = self._formula_factory(raw_expr=join_condition, parent=relationship)
         relationship.add_derived_by(formula)
         ontology.add_rule(formula)
 
@@ -644,8 +646,8 @@ class PalantirToOsiConverter:
     # Datasets
     # ------------------------------------------------------------------
 
-    @staticmethod
     def _convert_dataset(
+        self,
         semantic_model: SemanticModel,
         ontology: OntologyComponent,
         ot: ObjectType,
@@ -721,18 +723,15 @@ class PalantirToOsiConverter:
             )
         return f"{{{type_.to_type()}}}"
 
-    @staticmethod
     def _convert_property_type_roles(
-        ontology: OntologyComponent, roles: list[tuple[Concept, str | None]], type_, arr_depth: int = 1
+        self, ontology: OntologyComponent, roles: list[tuple[Concept, str | None]], type_, arr_depth: int = 1
     ) -> list[tuple[Concept, str | None]]:
         if isinstance(type_, ArrayDataType):
             integer = ontology.lookup_concept("Integer")
             if integer is None:
                 raise ValueError("Builtin 'Integer' could not be resolved for array role.")
             roles.append((integer, PalantirToOsiConverter._depth_role_name(arr_depth)))
-            PalantirToOsiConverter._convert_property_type_roles(
-                ontology, roles, type_.base_type(), arr_depth + 1
-            )
+            self._convert_property_type_roles(ontology, roles, type_.base_type(), arr_depth + 1)
         else:
             target = ontology.lookup_concept(type_.to_type())
             if target is None:

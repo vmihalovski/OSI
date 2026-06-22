@@ -25,7 +25,7 @@ class OsiParser:
     def parse(self, file: IOBase) -> None:
         raw = OsiParser.load_data(file)
         self._spec = OsiSpec.model_validate(raw)
-        self._model = SpecToOsiConverter.convert(self._spec)
+        self._model = SpecToOsiConverter().convert(self._spec)
 
     @staticmethod
     def load_data(file: IOBase):

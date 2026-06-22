@@ -16,6 +16,7 @@ from osi.model import (
     DialectExpressionSet,
     Dimension,
     Formula,
+    FormulaFactory,
     JoinPath,
     LinkMapping,
     SemanticModel,
@@ -56,10 +57,20 @@ _BARE_FIELD_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*$")
 
 
 class SpecToOsiConverter:
-    """Top-level converter. Use `convert(spec)` to obtain a OsiOntology."""
+    """Converts OsiSpec (Pydantic DTOs) to OsiOntology (runtime model).
 
-    @staticmethod
-    def convert(spec: OsiSpec) -> OsiOntology:
+    Pass a *formula_factory* to control how Formula objects are created.
+    The default produces plain ``Formula`` instances; downstream packages can
+    inject a factory that returns enriched subclasses (e.g. with an AST).
+
+        model = SpecToOsiConverter().convert(spec)
+        model = SpecToOsiConverter(formula_factory=my_parser).convert(spec)
+    """
+
+    def __init__(self, formula_factory: FormulaFactory = Formula):
+        self._formula_factory = formula_factory
+
+    def convert(self, spec: OsiSpec) -> OsiOntology:
         ontology = OntologyComponent()
         model = OsiOntology(
             name=spec.name,
@@ -69,20 +80,19 @@ class SpecToOsiConverter:
             version=spec.version,
         )
 
-        SpecToOsiConverter._populate_ontology(ontology, spec)
+        self._populate_ontology(ontology, spec)
 
         for om_spec in spec.ontology_mappings:
-            SpecToOsiConverter._convert_ontology_mapping(model, om_spec)
+            self._convert_ontology_mapping(model, om_spec)
 
         return model
 
     # ----- Ontology ------------------------------------------------------
 
-    @staticmethod
-    def _populate_ontology(ontology: OntologyComponent, spec: OsiSpec) -> None:
+    def _populate_ontology(self, ontology: OntologyComponent, spec: OsiSpec) -> None:
 
         concept_specs = {concept_component.concept.name: concept_component.concept for concept_component in spec.ontology}
-        sorted_names = SpecToOsiConverter._sort_spec_dependency_graph(list(concept_specs.values()))
+        sorted_names = self._sort_spec_dependency_graph(list(concept_specs.values()))
         for name in sorted_names:
             concept_spec = concept_specs[name]
             extends: list[Concept] = []
@@ -108,7 +118,7 @@ class SpecToOsiConverter:
             if container is None:
                 raise ValueError(f"Internal: container concept '{concept_component.concept.name}' not found")
             for rel_spec in concept_component.relationships:
-                SpecToOsiConverter._convert_relationship(ontology, container, rel_spec)
+                self._convert_relationship(ontology, container, rel_spec)
 
         # Identifiers: now that all relationships exist, resolve identify_by.
         for concept_component in spec.ontology:
@@ -134,12 +144,12 @@ class SpecToOsiConverter:
             if concept is None:
                 continue
             for raw in concept_spec.requires:
-                req = _build_rule(raw, concept)
+                req = self._build_rule(raw, concept)
                 if req:
                     concept.add_require(req)
                     ontology.add_require(req)
             for raw in concept_spec.derived_by:
-                rule = _build_rule(raw, concept)
+                rule = self._build_rule(raw, concept)
                 if rule:
                     concept.add_derived_by(rule)
                     ontology.add_rule(rule)
@@ -148,19 +158,18 @@ class SpecToOsiConverter:
                 if rel is None:
                     continue
                 for raw in rel_spec.requires:
-                    req = _build_rule(raw, rel)
+                    req = self._build_rule(raw, rel)
                     if req:
                         rel.add_require(req)
                         ontology.add_require(req)
                 for raw in rel_spec.derived_by:
-                    rule = _build_rule(raw, rel)
+                    rule = self._build_rule(raw, rel)
                     if rule:
                         rel.add_derived_by(rule)
                         ontology.add_rule(rule)
 
-    @staticmethod
     def _convert_relationship(
-        ontology: OntologyComponent, container: Concept, rel_spec: SpecRelationship
+        self, ontology: OntologyComponent, container: Concept, rel_spec: SpecRelationship
     ) -> None:
         relates: list[tuple[Concept, str | None]] = []
         for role_spec in rel_spec.roles:
@@ -185,8 +194,7 @@ class SpecToOsiConverter:
 
     # ----- Logical model -------------------------------------------------
 
-    @staticmethod
-    def _convert_semantic_model(lm_spec: SpecSemanticModel) -> SemanticModel:
+    def _convert_semantic_model(self, lm_spec: SpecSemanticModel) -> SemanticModel:
         semantic_model = SemanticModel(
             name=lm_spec.name,
             description=lm_spec.description,
@@ -205,11 +213,10 @@ class SpecToOsiConverter:
 
     # ----- Ontology mapping ---------------------------------------------
 
-    @staticmethod
-    def _convert_ontology_mapping(model: OsiOntology, om_spec: SpecOntologyMapping) -> None:
+    def _convert_ontology_mapping(self, model: OsiOntology, om_spec: SpecOntologyMapping) -> None:
         ontology = model.ontology
 
-        semantic_model = SpecToOsiConverter._convert_semantic_model(om_spec.semantic_model)
+        semantic_model = self._convert_semantic_model(om_spec.semantic_model)
 
         mapping = OntologyMapping(
             name=om_spec.name,
@@ -220,14 +227,10 @@ class SpecToOsiConverter:
         model.add_ontology_mapping(mapping)
 
         for cm_spec in om_spec.concept_mappings:
-            mapping.add_concept_mapping(
-                SpecToOsiConverter._convert_concept_mapping(
-                    model, ontology, semantic_model, cm_spec
-                )
-            )
+            mapping.add_concept_mapping(self._convert_concept_mapping(model, ontology, semantic_model, cm_spec))
 
-    @staticmethod
     def _convert_concept_mapping(
+        self,
         model: OsiOntology,
         ontology: OntologyComponent,
         semantic_model: SemanticModel,
@@ -241,20 +244,16 @@ class SpecToOsiConverter:
         cm = ConceptMapping(concept=concept)
         for object_mapping_spec in cm_spec.object_mappings:
             cm.object_mappings.append(
-                SpecToOsiConverter._convert_object_mapping(
-                    model, ontology, semantic_model, concept, object_mapping_spec
-                )
+                self._convert_object_mapping(model, ontology, semantic_model, concept, object_mapping_spec)
             )
         for link_mapping_spec in cm_spec.link_mappings:
             cm.link_mappings.append(
-                SpecToOsiConverter._convert_link_mapping(
-                    model, ontology, semantic_model, concept, link_mapping_spec
-                )
+                self._convert_link_mapping(model, ontology, semantic_model, concept, link_mapping_spec)
             )
         return cm
 
-    @staticmethod
     def _convert_object_mapping(
+        self,
         model: OsiOntology,
         ontology: OntologyComponent,
         semantic_model: SemanticModel,
@@ -271,20 +270,18 @@ class SpecToOsiConverter:
                 )
         expression: DatasetField | Formula | None = None
         if om_spec.expression is not None:
-            expression = _resolve_mapping_expression(om_spec.expression, semantic_model, concept)
+            expression = self._resolve_mapping_expression(om_spec.expression, semantic_model, concept)
         referent_mappings = None
         if om_spec.referent_mappings is not None:
             rm_container = concept if concept is not None else container
             referent_mappings = [
-                SpecToOsiConverter._convert_referent_mapping(
-                    model, ontology, semantic_model, rm_container, rm
-                )
+                self._convert_referent_mapping(model, ontology, semantic_model, rm_container, rm)
                 for rm in om_spec.referent_mappings
             ]
         return ObjectMapping(concept=concept, expression=expression, referent_mappings=referent_mappings)
 
-    @staticmethod
     def _convert_referent_mapping(
+        self,
         model: OsiOntology,
         ontology: OntologyComponent,
         semantic_model: SemanticModel,
@@ -300,26 +297,24 @@ class SpecToOsiConverter:
         sibling_player = rel.last_role.player
         expression: DatasetField | Formula | None = None
         if rm_spec.expression is not None:
-            expression = _resolve_mapping_expression(rm_spec.expression, semantic_model, sibling_player)
+            expression = self._resolve_mapping_expression(rm_spec.expression, semantic_model, sibling_player)
         nested = None
         if rm_spec.referent_mappings is not None:
             nested = [
-                SpecToOsiConverter._convert_referent_mapping(
-                    model, ontology, semantic_model, sibling_player, child
-                )
+                self._convert_referent_mapping(model, ontology, semantic_model, sibling_player, child)
                 for child in rm_spec.referent_mappings
             ]
         return ReferentMapping(relationship=rel, expression=expression, referent_mappings=nested)
 
-    @staticmethod
     def _convert_link_mapping(
+        self,
         model: OsiOntology,
         ontology: OntologyComponent,
         semantic_model: SemanticModel,
         container: Concept,
         lm_spec: SpecLinkMapping,
     ) -> LinkMapping:
-        object_mapping = SpecToOsiConverter._convert_object_mapping(
+        object_mapping = self._convert_object_mapping(
             model, ontology, semantic_model, container, lm_spec.object_mapping
         )
         relationship: Relationship | None = None
@@ -334,14 +329,48 @@ class SpecToOsiConverter:
         if lm_spec.children is not None:
             child_container = relationship.last_role.player if relationship is not None else container
             children = [
-                SpecToOsiConverter._convert_link_mapping(
-                    model, ontology, semantic_model, child_container, child
-                )
+                self._convert_link_mapping(model, ontology, semantic_model, child_container, child)
                 for child in lm_spec.children
             ]
         return LinkMapping(object_mapping=object_mapping, relationship=relationship, children=children)
 
-    # ----- helpers -------------------------------------------------------
+    # ----- Formula helpers -----------------------------------------------
+
+    def _build_rule(self, raw: str | None, parent: Container) -> Formula | None:
+        if not raw:
+            return None
+        return self._formula_factory(raw_expr=raw, parent=parent)
+
+    def _resolve_mapping_expression(
+        self, expression: str, semantic_model: SemanticModel, expected_type: Concept | None
+    ) -> DatasetField | Formula:
+        """Map a raw spec expression onto either a DatasetField (single
+        `DATASET.field` or bare `field` reference) or a Formula (anything else).
+        """
+        qualified = _QUALIFIED_FIELD_RE.match(expression)
+        if qualified:
+            ds_name, field_name = qualified.group(1), qualified.group(2)
+            dataset = semantic_model.lookup_dataset(ds_name)
+            if dataset is not None:
+                field = dataset.field(field_name)
+                if field is not None:
+                    _pin_field_type(field, expected_type)
+                    return field
+            return self._formula_factory(raw_expr=expression)
+
+        bare = _BARE_FIELD_RE.match(expression)
+        if bare:
+            field_name = bare.group(1)
+            for dataset in semantic_model.datasets:
+                field = dataset.field(field_name)
+                if field is not None:
+                    _pin_field_type(field, expected_type)
+                    return field
+            return self._formula_factory(raw_expr=expression)
+
+        return self._formula_factory(raw_expr=expression)
+
+    # ----- Structural helpers --------------------------
 
     @staticmethod
     def _sort_spec_dependency_graph(concepts: list[SpecConcept]) -> list[str]:
@@ -352,46 +381,6 @@ class SpecToOsiConverter:
                 for ext in concept.extends:
                     edges.append((ext, concept.name))
         return topological_sort(nodes, edges)
-
-
-# ---------------------------------------------------------------------------
-# Module-level helpers (logical-model + custom extensions)
-# ---------------------------------------------------------------------------
-
-def _build_rule(raw: str | None, parent: Container) -> Formula | None:
-    if not raw:
-        return None
-    return Formula(raw_expr=raw, parent=parent)
-
-
-def _resolve_mapping_expression(
-    expression: str, semantic_model: SemanticModel, expected_type: Concept | None
-) -> DatasetField | Formula:
-    """Map a raw spec expression onto either a DatasetField (single
-    `DATASET.field` or bare `field` reference) or a Formula (anything else).
-    """
-    qualified = _QUALIFIED_FIELD_RE.match(expression)
-    if qualified:
-        ds_name, field_name = qualified.group(1), qualified.group(2)
-        dataset = semantic_model.lookup_dataset(ds_name)
-        if dataset is not None:
-            field = dataset.field(field_name)
-            if field is not None:
-                _pin_field_type(field, expected_type)
-                return field
-        return Formula(raw_expr=expression)
-
-    bare = _BARE_FIELD_RE.match(expression)
-    if bare:
-        field_name = bare.group(1)
-        for dataset in semantic_model.datasets:
-            field = dataset.field(field_name)
-            if field is not None:
-                _pin_field_type(field, expected_type)
-                return field
-        return Formula(raw_expr=expression)
-
-    return Formula(raw_expr=expression)
 
 
 def _pin_field_type(field: DatasetField, expected_type: Concept | None) -> None:

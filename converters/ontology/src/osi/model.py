@@ -393,6 +393,17 @@ class Formula:
         return self._raw_expr
 
 
+class FormulaFactory(Protocol):
+    """Callable that produces a Formula (or a subclass) from a raw expression.
+
+    The default implementation is the Formula constructor itself.  Override in
+    a downstream package to return an enriched subclass — e.g. one carrying an
+    AST produced by a FormulaParser — without touching the converters.
+    """
+
+    def __call__(self, raw_expr: str, parent: FormulaParent = None) -> Formula: ...
+
+
 # ---------------------------------------------------------------------------
 # Semantic model (datasets, join paths, metrics)
 # ---------------------------------------------------------------------------

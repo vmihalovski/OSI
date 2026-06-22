@@ -48,7 +48,7 @@ if __name__ == "__main__":
     with open(path, mode) as file:
         parser.parse(file)
 
-    ontology_model = PalantirToOsiConverter.convert(parser.model(), db_name, schema_name)
+    ontology_model = PalantirToOsiConverter().convert(parser.model(), db_name, schema_name)
 
     osi_spec = OsiToSpecConverter.convert(ontology_model)
     print(osi_spec.dump_yaml())
