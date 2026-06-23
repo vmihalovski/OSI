@@ -271,7 +271,8 @@ class SpecToOsiConverter:
                 )
         expression: DatasetField | Formula | None = None
         if om_spec.expression is not None:
-            expression = self._resolve_mapping_expression(om_spec.expression, semantic_model, concept, ontology)
+            parent = concept if concept is not None else container
+            expression = self._resolve_mapping_expression(om_spec.expression, parent, semantic_model, concept, ontology)
         referent_mappings = None
         if om_spec.referent_mappings is not None:
             rm_container = concept if concept is not None else container
@@ -298,7 +299,7 @@ class SpecToOsiConverter:
         sibling_player = rel.last_role.player
         expression: DatasetField | Formula | None = None
         if rm_spec.expression is not None:
-            expression = self._resolve_mapping_expression(rm_spec.expression, semantic_model, sibling_player, ontology)
+            expression = self._resolve_mapping_expression(rm_spec.expression, rel, semantic_model, sibling_player, ontology)
         nested = None
         if rm_spec.referent_mappings is not None:
             nested = [
@@ -315,9 +316,7 @@ class SpecToOsiConverter:
         container: Concept,
         lm_spec: SpecLinkMapping,
     ) -> LinkMapping:
-        object_mapping = self._convert_object_mapping(
-            model, ontology, semantic_model, container, lm_spec.object_mapping
-        )
+        object_mapping = self._convert_object_mapping(model, ontology, semantic_model, container, lm_spec.object_mapping)
         relationship: Relationship | None = None
         if lm_spec.relationship is not None:
             relationship = ontology.lookup_concept_relationship(container, lm_spec.relationship)
@@ -342,9 +341,8 @@ class SpecToOsiConverter:
             return None
         return self._formula_factory(raw_expr=raw, parent=parent, ontology=ontology)
 
-    def _resolve_mapping_expression(
-        self, expression: str, semantic_model: SemanticModel, expected_type: Concept | None, ontology: OntologyComponent
-    ) -> DatasetField | Formula:
+    def _resolve_mapping_expression(self, expression: str, parent: Concept | Relationship, semantic_model: SemanticModel,
+            expected_type: Concept | None, ontology: OntologyComponent) -> DatasetField | Formula:
         """Map a raw spec expression onto either a DatasetField (single
         `DATASET.field` or bare `field` reference) or a Formula (anything else).
         """
@@ -357,7 +355,7 @@ class SpecToOsiConverter:
                 if field is not None:
                     _pin_field_type(field, expected_type)
                     return field
-            return self._formula_factory(raw_expr=expression, ontology=ontology)
+            return self._formula_factory(raw_expr=expression, parent=parent, ontology=ontology)
 
         bare = _BARE_FIELD_RE.match(expression)
         if bare:
@@ -367,9 +365,9 @@ class SpecToOsiConverter:
                 if field is not None:
                     _pin_field_type(field, expected_type)
                     return field
-            return self._formula_factory(raw_expr=expression, ontology=ontology)
+            return self._formula_factory(raw_expr=expression, parent=parent, ontology=ontology)
 
-        return self._formula_factory(raw_expr=expression, ontology=ontology)
+        return self._formula_factory(raw_expr=expression, parent=parent, ontology=ontology)
 
     # ----- Structural helpers --------------------------
 
