@@ -399,11 +399,12 @@ class FormulaFactory:
     Subclass and override __call__ to return an enriched Formula subclass,
     e.g. one carrying an AST produced by a FormulaParser.
 
-    The *ontology* parameter gives the factory access to the ontology being
+    The *ontology* and *semantic_model* parameters give the factory access to the ontology being
     built so that name resolution and validation can be performed.
     """
 
-    def __call__(self, raw_expr: str, parent: FormulaParent = None, ontology: OntologyComponent | None = None) -> Formula:
+    def __call__(self, raw_expr: str, parent: FormulaParent = None,
+                 ontology: OntologyComponent | None = None, semantic_model: SemanticModel | None = None) -> Formula:
         return Formula(raw_expr=raw_expr, parent=parent)
 
 

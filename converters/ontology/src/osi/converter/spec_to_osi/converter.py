@@ -336,10 +336,11 @@ class SpecToOsiConverter:
 
     # ----- Formula helpers -----------------------------------------------
 
-    def _build_rule(self, raw: str | None, parent: Container,  ontology: OntologyComponent) -> Formula | None:
+    def _build_rule(self, raw: str | None, parent: Container, ontology: OntologyComponent, 
+                    semantic_model: SemanticModel | None = None) -> Formula | None:
         if not raw:
             return None
-        return self._formula_factory(raw_expr=raw, parent=parent, ontology=ontology)
+        return self._formula_factory(raw_expr=raw, parent=parent, ontology=ontology, semantic_model=semantic_model)
 
     def _resolve_mapping_expression(self, expression: str, parent: Concept | Relationship, semantic_model: SemanticModel,
             expected_type: Concept | None, ontology: OntologyComponent) -> DatasetField | Formula:
@@ -355,7 +356,8 @@ class SpecToOsiConverter:
                 if field is not None:
                     _pin_field_type(field, expected_type)
                     return field
-            return self._formula_factory(raw_expr=expression, parent=parent, ontology=ontology)
+            return self._formula_factory(raw_expr=expression, parent=parent, ontology=ontology, 
+                                         semantic_model=semantic_model)
 
         bare = _BARE_FIELD_RE.match(expression)
         if bare:
@@ -365,9 +367,11 @@ class SpecToOsiConverter:
                 if field is not None:
                     _pin_field_type(field, expected_type)
                     return field
-            return self._formula_factory(raw_expr=expression, parent=parent, ontology=ontology)
+            return self._formula_factory(raw_expr=expression, parent=parent, ontology=ontology, 
+                                         semantic_model=semantic_model)
 
-        return self._formula_factory(raw_expr=expression, parent=parent, ontology=ontology)
+        return self._formula_factory(raw_expr=expression, parent=parent, ontology=ontology, 
+                                     semantic_model=semantic_model)
 
     # ----- Structural helpers --------------------------
 
