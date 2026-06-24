@@ -17,6 +17,7 @@ from osi.model import (
     Dimension,
     Formula,
     FormulaFactory,
+    MappingFormulaFactory,
     JoinPath,
     LinkMapping,
     SemanticModel,
@@ -68,8 +69,10 @@ class SpecToOsiConverter:
         model = SpecToOsiConverter(formula_factory=my_parser).convert(spec)
     """
 
-    def __init__(self, formula_factory: FormulaFactory = FormulaFactory()):
+    def __init__(self, formula_factory: FormulaFactory = FormulaFactory(), 
+                 mapping_formula_factory: MappingFormulaFactory = MappingFormulaFactory()):
         self._formula_factory = formula_factory
+        self._mapping_formula_factory = mapping_formula_factory
 
     def convert(self, spec: OsiSpec) -> OsiOntology:
         ontology = OntologyComponent()
@@ -271,8 +274,7 @@ class SpecToOsiConverter:
                 )
         expression: DatasetField | Formula | None = None
         if om_spec.expression is not None:
-            parent = concept if concept is not None else container
-            expression = self._resolve_mapping_expression(om_spec.expression, parent, semantic_model, concept, ontology)
+            expression = self._resolve_mapping_expression(om_spec.expression, semantic_model, concept, ontology)
         referent_mappings = None
         if om_spec.referent_mappings is not None:
             rm_container = concept if concept is not None else container
@@ -299,7 +301,7 @@ class SpecToOsiConverter:
         sibling_player = rel.last_role.player
         expression: DatasetField | Formula | None = None
         if rm_spec.expression is not None:
-            expression = self._resolve_mapping_expression(rm_spec.expression, rel, semantic_model, sibling_player, ontology)
+            expression = self._resolve_mapping_expression(rm_spec.expression, semantic_model, sibling_player, ontology)
         nested = None
         if rm_spec.referent_mappings is not None:
             nested = [
@@ -336,14 +338,13 @@ class SpecToOsiConverter:
 
     # ----- Formula helpers -----------------------------------------------
 
-    def _build_rule(self, raw: str | None, parent: Container, ontology: OntologyComponent, 
-                    semantic_model: SemanticModel | None = None) -> Formula | None:
+    def _build_rule(self, raw: str | None, parent: Container, ontology: OntologyComponent) -> Formula | None:
         if not raw:
             return None
-        return self._formula_factory(raw_expr=raw, parent=parent, ontology=ontology, semantic_model=semantic_model)
+        return self._formula_factory(raw_expr=raw, parent=parent, ontology=ontology)
 
-    def _resolve_mapping_expression(self, expression: str, parent: Concept | Relationship, semantic_model: SemanticModel,
-            expected_type: Concept | None, ontology: OntologyComponent) -> DatasetField | Formula:
+    def _resolve_mapping_expression(self, expression: str, semantic_model: SemanticModel, expected_type: Concept | None,
+                                    ontology: OntologyComponent) -> DatasetField | Formula:
         """Map a raw spec expression onto either a DatasetField (single
         `DATASET.field` or bare `field` reference) or a Formula (anything else).
         """
@@ -356,8 +357,7 @@ class SpecToOsiConverter:
                 if field is not None:
                     _pin_field_type(field, expected_type)
                     return field
-            return self._formula_factory(raw_expr=expression, parent=parent, ontology=ontology, 
-                                         semantic_model=semantic_model)
+            return self._mapping_formula_factory(raw_expr=expression, ontology=ontology, semantic_model=semantic_model)
 
         bare = _BARE_FIELD_RE.match(expression)
         if bare:
@@ -367,11 +367,9 @@ class SpecToOsiConverter:
                 if field is not None:
                     _pin_field_type(field, expected_type)
                     return field
-            return self._formula_factory(raw_expr=expression, parent=parent, ontology=ontology, 
-                                         semantic_model=semantic_model)
+            return self._mapping_formula_factory(raw_expr=expression, ontology=ontology, semantic_model=semantic_model)
 
-        return self._formula_factory(raw_expr=expression, parent=parent, ontology=ontology, 
-                                     semantic_model=semantic_model)
+        return self._mapping_formula_factory(raw_expr=expression, ontology=ontology, semantic_model=semantic_model)
 
     # ----- Structural helpers --------------------------
 

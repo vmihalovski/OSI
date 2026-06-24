@@ -394,13 +394,23 @@ class Formula:
 
 
 class FormulaFactory:
-    """Base factory that produces a Formula from a raw expression.
+    """Base factory for ontology-level formulas (derived_by / requires on concepts and relationships).
 
     Subclass and override __call__ to return an enriched Formula subclass,
     e.g. one carrying an AST produced by a FormulaParser.
+    """
 
-    The *ontology* and *semantic_model* parameters give the factory access to the ontology being
-    built so that name resolution and validation can be performed.
+    def __call__(self, raw_expr: str, parent: FormulaParent = None, ontology: OntologyComponent | None = None) -> Formula:
+        return Formula(raw_expr=raw_expr, parent=parent)
+
+
+class MappingFormulaFactory:
+    """Base factory for mapping-level formulas (object / referent mapping expressions).
+
+    Receives both the ontology and the semantic model so that name resolution
+    and field-level validation can be performed against the full mapping context.
+
+    Subclass and override __call__ to return an enriched Formula subclass.
     """
 
     def __call__(self, raw_expr: str, parent: FormulaParent = None,

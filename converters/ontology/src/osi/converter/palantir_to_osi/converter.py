@@ -374,14 +374,14 @@ class PalantirToOsiConverter:
 
         for ir in palantir_ontology.intermediary_relations().values():
             if ir.active() or ir.intermediary():
-                self._convert_intermediary_relation(ontology, palantir_ontology, ir, semantic_model)
+                self._convert_intermediary_relation(ontology, palantir_ontology, ir)
             elif (
                 ir.experimental()
                 and ir.role_a_player().active()
                 and ir.role_b_player().active()
                 and ir.intermediary_player().active()
             ):
-                self._convert_intermediary_relation(ontology, palantir_ontology, ir, semantic_model)
+                self._convert_intermediary_relation(ontology, palantir_ontology, ir)
 
     def _convert_relation(
         self,
@@ -441,8 +441,7 @@ class PalantirToOsiConverter:
                 for mprop, oprop in rel.property_map().items()
             ]
             if frags:
-                formula = self._formula_factory(raw_expr=" AND ".join(frags), parent=relationship, ontology=ontology, 
-                                                semantic_model=semantic_model)
+                formula = self._formula_factory(raw_expr=" AND ".join(frags), parent=relationship, ontology=ontology)
                 relationship.add_derived_by(formula)
                 ontology.add_rule(formula)
 
@@ -587,7 +586,6 @@ class PalantirToOsiConverter:
         ontology: OntologyComponent,
         palantir_ontology: PalantirOntology,
         rel: IntermediaryRelation,
-        semantic_model: SemanticModel,
     ) -> None:
         aot = rel.role_a_player()
         aot_name = PalantirToOsiConverter._concept_name(aot)
@@ -640,8 +638,7 @@ class PalantirToOsiConverter:
             f"{fp_a}.{rel_a_name}({relationship.first_role.name}) AND "
             f"{fp_b}.{rel_b_name}({relationship.last_role.name})"
         )
-        formula = self._formula_factory(raw_expr=join_condition, parent=relationship, ontology=ontology, 
-                                        semantic_model=semantic_model)
+        formula = self._formula_factory(raw_expr=join_condition, parent=relationship, ontology=ontology)
         relationship.add_derived_by(formula)
         ontology.add_rule(formula)
 
