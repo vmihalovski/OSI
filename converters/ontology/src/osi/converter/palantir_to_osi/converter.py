@@ -291,6 +291,13 @@ class PalantirToOsiConverter:
                     continue
                 id_referents.append(ReferentMapping(relationship=rel, expression=field))
 
+            if not id_referents:
+                warnings.warn(
+                    f"No identifying fields found for concept '{concept.name}' in dataset "
+                    f"'{dataset.name}'; skipping concept mapping."
+                )
+                continue
+
             cm = ConceptMapping(concept=concept)
 
             # object_mappings: how to construct/identify this concept's
@@ -299,7 +306,7 @@ class PalantirToOsiConverter:
             cm.object_mappings.append(
                 ObjectMapping(
                     concept=parent_concept,
-                    referent_mappings=list(id_referents) if id_referents else None,
+                    referent_mappings=id_referents,
                 )
             )
 
@@ -332,19 +339,19 @@ class PalantirToOsiConverter:
                 value_concept = relationship.last_role.player
                 children.append(
                     LinkMapping(
-                        object_mapping=ObjectMapping(concept=value_concept,expression=field),
+                        object_mapping=ObjectMapping(concept=value_concept, expression=field),
                         relationship=relationship,
                     )
                 )
 
-            if id_referents or children:
+            if children:
                 cm.link_mappings.append(
                     LinkMapping(
                         object_mapping=ObjectMapping(
                             concept=parent_concept,
-                            referent_mappings=list(id_referents) if id_referents else None,
+                            referent_mappings=id_referents,
                         ),
-                        children=children if children else None,
+                        children=children,
                     )
                 )
 
